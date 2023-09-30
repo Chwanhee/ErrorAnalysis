@@ -3,21 +3,16 @@ from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import pickle
 
-handle = open("series_resistances.pkl",'rb')
-A = pickle.load(handle)
-handle.close()
+with open("series_resistances.pkl","rb") as handle:
+    A = pickle.load(handle)
 
-
-volt_in = A.keys() # List of input voltages
-
-n = len(volt_in)      # number of voltage
+n = len(A)      # number of voltage
 m = len(A.get(list(A.keys())[0]))       # number of measurement in each voltage
-
 B = {}       # temporary storage
 #C = {}
 C = []       # [input voltage, V1/V2, 1 sigma error]
 for i in range(n):      
-    mean = np.mean(A.get(list(A.keys())[i]))      # generate list[mean of V_1, mean of V_2]
+    mean = np.mean(A.get(list(A.keys())[i]), axis = 0)      # generate list[mean of V_1, mean of V_2]
     std = np.std(A.get(list(A.keys())[i]), axis = 0, ddof = 1)      # generate list[sample standard deviation of V_1, sample standard deviation of V_2]
     B[list(A.keys())[i]] = [[mean[0], std[0]], [mean[1], std[1]]]       # generate pair input voltage : list[[mean_V1, SSD_V1], [mean_V2, SSD_V2]]
     #C[list(A.keys())[i]] = [mean[0]/mean[1], mean[0]/mean[1]*((std[0]/mean[0])**2+(std[1]/mean[1])**2)**0.5]         # generate pair input voltage : [V_1/V_2, 1 sigma error]
