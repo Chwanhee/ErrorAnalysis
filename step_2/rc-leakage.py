@@ -3,10 +3,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+import ctypes as c
+import swimAD2 as ad2
+
 from tqdm import tqdm
 import pickle
 
-import swimAD2 as ad2
 import time
 
 ####### End of importing #######
@@ -32,6 +34,17 @@ def config_measurement(tinterval,volt):
         sample_rate = rate,
         sample_size= size,
         )
+    
+    # Check whether the config worked well
+    vr1 = c.c_double()
+    vr2 = c.c_double()
+    ad2.dwf.FDwfAnalogInChannelRangeGet(zoroku, c.c_int(0), c.byref(vr1))
+    ad2.dwf.FDwfAnalogInChannelRangeGet(zoroku, c.c_int(1), c.byref(vr2))
+    if volt < vr2.value() and volt < vr2.value:
+        return True
+    else:
+        print("Failed to adjust oscilloscope gain.")
+        return False
 ### End of function defining ###
 
 
@@ -49,12 +62,6 @@ Cap = 10e-6 # Capacitance in Fahrads.
 # It can't be smaller than leakage (orders of uA).
 
 threshold = 1e-4 # Fraction of capacitor left to full charge. 
-
-tau = Res[0]*Cap
-t_wait = -tau*np.log(threshold) # Expected time to charge. 
-discharge = t_wait*10
-
-print("%5f s to charge, %5f s to discharge" % (t_wait,discharge))
 
 volt_in = [.1,.5,
            1,1.5,
@@ -79,8 +86,15 @@ for i,R in enumerate(Res):
                                     }
 
 for R in Res:
-    downtime = len(volt_in)*60*len(n_trial)*(t_wait+5+discharge)/60
+    tau = R*Cap
+    t_wait = -tau*np.log(threshold) # Expected time to charge. 
+    discharge1 = t_wait*10
+    discharge2 = t_wait*1e5
+    print("%5f s to charge, %5f s to discharge" % (t_wait,discharge1))
+
+    downtime = ((t_wait+5+discharge1)*len(n_trial)+discharge2)*len(volt_in)/60
     print("Expected wait time : %2f min" % downtime)
+
     for volt in tqdm(volt_in):
         for trial in data_dict[R][volt].keys():
             ad2.config_wavegen(zoroku, 
@@ -88,12 +102,14 @@ for R in Res:
                             amplitude=0,
                             offset=volt
                             )
-            config_measurement(t_wait,volt)
+            if not config_measurement(t_wait,volt): 
+                break
             ad2.start_wavegen(zoroku,channel=0)
 
             data_dict[R][volt][trial]["rise"] = ad2.measure_oscilloscope(zoroku)
             
-            config_measurement(5,volt)
+            if not config_measurement(5,volt):
+                break
             t,v0,v1 = ad2.measure_oscilloscope(zoroku)
             t += t_wait
 
@@ -103,8 +119,8 @@ for R in Res:
             ad2.reset_wavegen(zoroku,channel=0)
 
             # We let the system discharge
-            time.sleep(discharge)
-        time.sleep(60)
+            time.sleep(discharge1)
+        time.sleep(discharge2)
     handle = open("Error_Analysis\\step_2\\rc-leakage.pkl", 'wb')
     pickle.dump(data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
     handle.close()
